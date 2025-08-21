@@ -8,7 +8,7 @@ env/
 *.env
 
 # Application Data - Contains user-specific information
-weights.xlsx
+#weights.xlsx
 
 # Generated static files - The script creates this folder and its contents
-static/
+#static/
