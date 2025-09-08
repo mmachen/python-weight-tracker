@@ -774,12 +774,30 @@ def index():
         chart_data_1 = [data1_map.get(date) for date in combined_labels]
         chart_data_2_to_plot = [data2_map.get(date) for date in combined_labels]
         chart_config["y2_axis_label"] = f"{comparison_user} Weight (lbs)"
-        y2_values = [v for v in chart_data_2_to_plot if v is not None]
-        if comparison_user_data.get('start_weight') is not None: y2_values.append(comparison_user_data['start_weight'])
-        if comparison_user_data.get('goal_weight') is not None: y2_values.append(comparison_user_data['goal_weight'])
-        if y2_values:
-            padding = 5
-            chart_config['y2_min'], chart_config['y2_max'] = min(y2_values) - padding, max(y2_values) + padding
+
+        # --- MODIFIED: Y-Axis Scaling Logic ---
+        p_start = primary_user_data.get('start_weight')
+        p_goal = primary_user_data.get('goal_weight')
+        c_start = comparison_user_data.get('start_weight')
+        c_goal = comparison_user_data.get('goal_weight')
+
+        # Check if all required values are present and valid for proportional scaling
+        if (y1_max is not None and y1_min is not None and
+            p_start and p_start > 0 and p_goal and p_goal > 0 and
+            c_start and c_goal):
+            
+            # Proportional scaling based on start and goal weights
+            chart_config['y2_max'] = y1_max * (c_start / p_start)
+            chart_config['y2_min'] = y1_min * (c_goal / p_goal)
+        else:
+            # Fallback to default auto-scaling if goal/start weights are missing
+            y2_values = [v for v in chart_data_2_to_plot if v is not None]
+            if c_start is not None: y2_values.append(c_start)
+            if c_goal is not None: y2_values.append(c_goal)
+            
+            if y2_values:
+                padding = 5
+                chart_config['y2_min'], chart_config['y2_max'] = min(y2_values) - padding, max(y2_values) + padding
     else:
         combined_labels, chart_data_1 = [e['date'] for e in entries1], [e['weight'] for e in entries1]
 
@@ -923,4 +941,3 @@ if __name__ == '__main__':
         print("\n--- Starting Flask Server ---")
         print("Open your web browser and go to: http://127.0.0.1:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
-
