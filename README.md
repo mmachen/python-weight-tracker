@@ -2,6 +2,8 @@
 
 A simple, self-contained, multi-user web application for tracking weight, body fat percentage, and waist circumference. Built with Flask and Python, this application uses a local Excel file for data persistence, making it easy to set up and manage without needing a database.
 
+<img width="534" height="314" alt="image" src="https://github.com/user-attachments/assets/666781f2-8800-4895-84c0-89d7abe30ca6" />
+
 ## ✨ Key Features
 
 * **Multi-User Support**: Add, delete, and switch between multiple user profiles.
