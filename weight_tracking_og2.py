@@ -106,7 +106,7 @@ HTML_CONTENT = """
                             </div>
                             <div class="form-group">
                                 <label for="waist_size">Waist Size (in): <span class="optional-text">(Optional)</span></label>
-                                <input type="number" id="waist_size" name="waist_size" step="0.1" placeholder="e.g., 34.5">
+                                <input type="number" id="waist_size" name="waist_size" step="0.01" placeholder="e.g., 34.55">
                             </div>
                         </div>
                         <button type="submit" class="btn btn-primary">Add Entry</button>
@@ -146,7 +146,7 @@ HTML_CONTENT = """
                                         <td>{{ entry.date }}</td>
                                         <td>{{ '%.2f'|format(entry.weight) }}</td>
                                         <td>{{ '%.2f'|format(entry.body_fat) if entry.body_fat is not none else '–' }}</td>
-                                        <td>{{ '%.1f'|format(entry.waist_size) if entry.waist_size is not none else '–' }}</td>
+                                        <td>{{ '%.2f'|format(entry.waist_size) if entry.waist_size is not none else '–' }}</td>
                                         <td>
                                             <a href="#" class="btn btn-secondary btn-sm" onclick="openEditModal('{{ entry.row_num }}', '{{ entry.date }}', '{{ entry.weight }}', '{{ entry.body_fat or '' }}', '{{ entry.waist_size or '' }}')">Edit</a>
                                             <a href="{{ url_for('delete_entry', row_index=entry.row_num) }}" class="btn btn-danger btn-sm">Delete</a>
@@ -217,15 +217,15 @@ HTML_CONTENT = """
                                 <tr class="summary-divider"><td colspan="2"></td></tr>
                                 <tr>
                                     <td>Current Waist Size</td>
-                                    <td>{{ '%.1f in'|format(summary_data.current_ws) }}</td>
+                                    <td>{{ '%.2f in'|format(summary_data.current_ws) }}</td>
                                 </tr>
                                 <tr>
                                     <td>Highest Waist Size</td>
-                                    <td>{{ '%.1f in'|format(summary_data.highest_ws) }}</td>
+                                    <td>{{ '%.2f in'|format(summary_data.highest_ws) }}</td>
                                 </tr>
                                 <tr>
                                     <td>Lowest Waist Size</td>
-                                    <td>{{ '%.1f in'|format(summary_data.lowest_ws) }}</td>
+                                    <td>{{ '%.2f in'|format(summary_data.lowest_ws) }}</td>
                                 </tr>
                                 {% endif %}
                             </tbody>
@@ -274,7 +274,7 @@ HTML_CONTENT = """
                 </div>
                 <div class="form-group">
                     <label for="edit_waist_size">Waist Size (in): <span class="optional-text">(Optional)</span></label>
-                    <input type="number" id="edit_waist_size" name="waist_size" step="0.1">
+                    <input type="number" id="edit_waist_size" name="waist_size" step="0.01">
                 </div>
                 <button type="submit" class="btn btn-primary">Save Changes</button>
             </form>
@@ -941,3 +941,5 @@ if __name__ == '__main__':
         print("\n--- Starting Flask Server ---")
         print("Open your web browser and go to: http://127.0.0.1:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+
