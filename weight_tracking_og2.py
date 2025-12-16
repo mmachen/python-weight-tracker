@@ -88,6 +88,26 @@ HTML_CONTENT = """
                     </div>
                 </div>
                 <div class="card">
+                    <h2>Multi-User Comparison</h2>
+                    <form action="/" method="get" class="multi-user-form">
+                        <input type="hidden" name="user1" value="{{ primary_user }}">
+                        {% if comparison_user %}
+                        <input type="hidden" name="user2" value="{{ comparison_user }}">
+                        {% endif %}
+                        <p class="form-hint">Select users to compare on the normalized chart:</p>
+                        <div class="checkbox-grid">
+                            {% for u in all_users %}
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="compare_users" value="{{ u }}" 
+                                    {% if u in selected_compare_users %}checked{% endif %}
+                                    onchange="this.form.submit()">
+                                <span class="checkbox-text">{{ u }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </form>
+                </div>
+                <div class="card">
                     <h2>Log New Entry for {{ primary_user }}</h2>
                     <form action="{{ url_for('index') }}" method="post" class="log-entry-form">
                         <input type="hidden" name="user" value="{{ primary_user }}">
@@ -253,6 +273,14 @@ HTML_CONTENT = """
             {% endif %}
         </div>
 
+        {% if normalized_chart_data %}
+        <div class="card normalized-chart-card">
+            <h2>Normalized Weight Progress (%)</h2>
+            <p class="chart-subtitle">Percentage of starting weight over time (100% = start weight)</p>
+            <canvas id="normalizedChart"></canvas>
+        </div>
+        {% endif %}
+
     </div>
 
     <div id="editModal" class="modal">
@@ -372,6 +400,87 @@ HTML_CONTENT = """
                 }]
             },
             options: { responsive: true, scales: { y: { title: { display: true, text: 'Waist Size (in)' }}}, plugins: { legend: { display: false }}}
+        });
+        {% endif %}
+
+        // --- Normalized Weight Chart ---
+        {% if normalized_chart_data %}
+        const norm_ctx = document.getElementById('normalizedChart').getContext('2d');
+        const normalizedChartData = {{ normalized_chart_data | tojson }};
+        const userColors = ['#33CFFF', '#9D63FF', '#28a745', '#fd7e14', '#e83e8c', '#20c997', '#6f42c1', '#17a2b8'];
+        
+        // Calculate min/max across ALL datasets for proper Y-axis scaling
+        let allValues = [];
+        normalizedChartData.datasets.forEach(ds => {
+            ds.data.forEach(val => {
+                if (val !== null && val !== undefined) {
+                    allValues.push(val);
+                }
+            });
+        });
+        // Always include 100% baseline in the range
+        allValues.push(100);
+        const yMin = Math.floor(Math.min(...allValues) - 2);
+        const yMax = Math.ceil(Math.max(...allValues) + 2);
+        
+        const normalizedDatasets = normalizedChartData.datasets.map((ds, idx) => ({
+            label: ds.label,
+            data: ds.data,
+            borderColor: userColors[idx % userColors.length],
+            backgroundColor: userColors[idx % userColors.length] + '20',
+            fill: false,
+            tension: 0.1,
+            spanGaps: true,
+            pointRadius: 4,
+            pointHoverRadius: 6
+        }));
+
+        new Chart(norm_ctx, {
+            type: 'line',
+            data: {
+                labels: normalizedChartData.labels,
+                datasets: normalizedDatasets
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: {
+                        min: yMin,
+                        max: yMax,
+                        title: { display: true, text: '% of Starting Weight' },
+                        ticks: { callback: function(value) { return value + '%'; } }
+                    }
+                },
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            startLine: {
+                                type: 'line',
+                                yMin: 100,
+                                yMax: 100,
+                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                borderWidth: 2,
+                                borderDash: [6, 6],
+                                label: {
+                                    content: 'Start (100%)',
+                                    display: true,
+                                    position: 'start',
+                                    backgroundColor: 'rgba(100, 100, 100, 0.8)'
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         });
         {% endif %}
 
@@ -597,6 +706,47 @@ tbody tr:last-child td { border-bottom: none; }
 .flash { padding: 1rem; border-radius: 8px; margin-bottom: 0.5rem; text-align: center; }
 .flash.success { background-color: #d4edda; color: #155724; }
 .flash.error { background-color: #f8d7da; color: #721c24; }
+.checkbox-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.checkbox-label:hover {
+    border-color: var(--primary-color);
+}
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+    cursor: pointer;
+}
+.checkbox-text {
+    font-weight: 500;
+}
+.form-hint {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+}
+.chart-subtitle {
+    color: #666;
+    font-size: 0.9rem;
+    text-align: center;
+    margin-top: -10px;
+    margin-bottom: 15px;
+}
+.normalized-chart-card {
+    margin-top: 20px;
+}
 """
 
 # 1. Setup: Create directories and files
@@ -775,7 +925,7 @@ def index():
         chart_data_2_to_plot = [data2_map.get(date) for date in combined_labels]
         chart_config["y2_axis_label"] = f"{comparison_user} Weight (lbs)"
 
-        # --- MODIFIED: Y-Axis Scaling Logic ---
+        # --- Proportional Y-Axis Scaling Logic ---
         p_start = primary_user_data.get('start_weight')
         p_goal = primary_user_data.get('goal_weight')
         c_start = comparison_user_data.get('start_weight')
@@ -831,13 +981,62 @@ def index():
         all_ws = [e['waist_size'] for e in waist_size_entries]
         summary_data.update({'current_ws': waist_size_entries[0]['waist_size'], 'highest_ws': max(all_ws), 'lowest_ws': min(all_ws)})
 
+    # --- Multi-User Normalized Chart Data ---
+    selected_compare_users = request.args.getlist('compare_users')
+    normalized_chart_data = None
+    
+    if selected_compare_users:
+        # Build normalized data for each selected user
+        all_dates = set()
+        user_normalized_data = {}
+        
+        for user in selected_compare_users:
+            user_data = get_user_data(user)
+            start_weight = user_data.get('start_weight')
+            
+            if not start_weight or start_weight <= 0:
+                continue  # Skip users without valid start weight
+            
+            user_entries = get_weight_entries(user)
+            if not user_entries:
+                continue  # Skip users with no entries
+            
+            # Calculate normalized weight for each entry
+            normalized_map = {}
+            for entry in user_entries:
+                if entry.get('weight'):
+                    normalized_pct = (entry['weight'] / start_weight) * 100
+                    normalized_map[entry['date']] = round(normalized_pct, 2)
+                    all_dates.add(entry['date'])
+            
+            if normalized_map:
+                user_normalized_data[user] = normalized_map
+        
+        # Build chart data structure if we have data
+        if user_normalized_data:
+            sorted_dates = sorted(list(all_dates))
+            datasets = []
+            
+            for user, norm_map in user_normalized_data.items():
+                data_points = [norm_map.get(date) for date in sorted_dates]
+                datasets.append({
+                    'label': user,
+                    'data': data_points
+                })
+            
+            normalized_chart_data = {
+                'labels': sorted_dates,
+                'datasets': datasets
+            }
+
     return render_template_string(
         HTML_CONTENT, entries=entries, primary_user=primary_user, comparison_user=comparison_user,
         all_users=all_users, primary_user_data=primary_user_data, comparison_user_data=comparison_user_data,
         combined_labels=combined_labels, chart_data_1=chart_data_1, chart_data_2_to_plot=chart_data_2_to_plot,
         chart_config=chart_config, today_date=today_date, summary_data=summary_data,
         body_fat_labels=body_fat_labels, body_fat_data=body_fat_data,
-        waist_size_labels=waist_size_labels, waist_size_data=waist_size_data
+        waist_size_labels=waist_size_labels, waist_size_data=waist_size_data,
+        selected_compare_users=selected_compare_users, normalized_chart_data=normalized_chart_data
     )
 
 @app.route('/update_goals', methods=['POST'])
