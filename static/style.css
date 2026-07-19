@@ -131,6 +131,8 @@ select { padding: 10px; background-color: white; }
 .btn-primary:hover { transform: translateY(-2px); }
 .btn-secondary { background-color: var(--secondary-color); color: white; }
 .btn-sm { padding: 5px 10px; font-size: 0.875rem; }
+.chart-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.chart-header h2 { margin: 0; }
 .goal-form .btn-secondary { width: 100%; }
 .btn-danger { background-color: var(--danger-color); color: white; }
 table {
