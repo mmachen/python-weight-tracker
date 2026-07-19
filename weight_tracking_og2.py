@@ -184,7 +184,12 @@ HTML_CONTENT = """
             </div>
             <div class="right-column">
                 <div class="card chart-card">
-                    <h2>Weight Progress</h2>
+                    <div class="chart-header">
+                        <h2>Weight Progress</h2>
+                        {% if combined_labels and moving_avg_data %}
+                            <button type="button" id="toggleAvgBtn" class="btn btn-secondary btn-sm">Hide Average Line</button>
+                        {% endif %}
+                    </div>
                     {% if combined_labels %}
                         <canvas id="weightChart"></canvas>
                     {% else %}
@@ -352,7 +357,9 @@ HTML_CONTENT = """
         });
         {% endif %}
 
+        let avgDatasetIndex = -1;
         {% if moving_avg_data %}
+        avgDatasetIndex = datasets.length;
         datasets.push({
             label: '{{ primary_user }} 4-Entry Avg',
             data: {{ moving_avg_data | tojson }},
@@ -387,7 +394,17 @@ HTML_CONTENT = """
 
         if (chart_config.y1_min !== null && chart_config.y1_max !== null) { chartOptions.scales.y1.min = chart_config.y1_min; chartOptions.scales.y1.max = chart_config.y1_max; }
         if (chart_config.y2_axis_label && chart_config.y2_min !== null && chart_config.y2_max !== null) { chartOptions.scales.y2.min = chart_config.y2_min; chartOptions.scales.y2.max = chart_config.y2_max; }
-        new Chart(ctx, { type: 'line', data: chartData, options: chartOptions });
+        const weightChart = new Chart(ctx, { type: 'line', data: chartData, options: chartOptions });
+
+        const toggleAvgBtn = document.getElementById('toggleAvgBtn');
+        if (toggleAvgBtn && avgDatasetIndex >= 0) {
+            toggleAvgBtn.addEventListener('click', function() {
+                const isVisible = weightChart.isDatasetVisible(avgDatasetIndex);
+                weightChart.setDatasetVisibility(avgDatasetIndex, !isVisible);
+                weightChart.update();
+                toggleAvgBtn.textContent = isVisible ? 'Show Average Line' : 'Hide Average Line';
+            });
+        }
         {% endif %}
 
         // --- Body Fat Chart ---
@@ -674,6 +691,8 @@ select { padding: 10px; background-color: white; }
 .btn-primary:hover { transform: translateY(-2px); }
 .btn-secondary { background-color: var(--secondary-color); color: white; }
 .btn-sm { padding: 5px 10px; font-size: 0.875rem; }
+.chart-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.chart-header h2 { margin: 0; }
 .goal-form .btn-secondary { width: 100%; }
 .btn-danger { background-color: var(--danger-color); color: white; }
 table {
