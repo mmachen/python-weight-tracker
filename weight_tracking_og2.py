@@ -169,7 +169,9 @@ HTML_CONTENT = """
                                         <td>{{ '%.2f'|format(entry.waist_size) if entry.waist_size is not none else '–' }}</td>
                                         <td>
                                             <a href="#" class="btn btn-secondary btn-sm" onclick="openEditModal('{{ entry.row_num }}', '{{ entry.date }}', '{{ entry.weight }}', '{{ entry.body_fat or '' }}', '{{ entry.waist_size or '' }}')">Edit</a>
-                                            <a href="{{ url_for('delete_entry', row_index=entry.row_num) }}" class="btn btn-danger btn-sm">Delete</a>
+                                            <form action="{{ url_for('delete_entry', row_index=entry.row_num) }}" method="post" class="inline-form" onsubmit="return confirm('Delete the entry from {{ entry.date }}? This cannot be undone.');">
+                                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                            </form>
                                         </td>
                                     </tr>
                                 {% endfor %}
@@ -198,6 +200,18 @@ HTML_CONTENT = """
                                     <td>Current Weight</td>
                                     <td>{{ '%.2f lbs'|format(summary_data.current) if summary_data.current is not none else 'N/A' }}</td>
                                 </tr>
+                                {% if summary_data.change_text %}
+                                <tr class="{{ summary_data.change_class }}">
+                                    <td>Since Last Entry</td>
+                                    <td>{{ summary_data.change_text }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if summary_data.avg_recent_text %}
+                                <tr>
+                                    <td>Average (last {{ summary_data.avg_recent_n }})</td>
+                                    <td>{{ summary_data.avg_recent_text }}</td>
+                                </tr>
+                                {% endif %}
                                 <tr>
                                     <td>Start Weight</td>
                                     <td>{{ '%.2f lbs'|format(summary_data.start) if summary_data.start is not none else 'N/A' }}</td>
@@ -338,6 +352,21 @@ HTML_CONTENT = """
         });
         {% endif %}
 
+        {% if moving_avg_data %}
+        datasets.push({
+            label: '{{ primary_user }} 4-Entry Avg',
+            data: {{ moving_avg_data | tojson }},
+            borderColor: '#1179A8',
+            borderDash: [8, 4],
+            borderWidth: 2,
+            pointRadius: 0,
+            yAxisID: 'y1',
+            fill: false,
+            tension: 0.3,
+            spanGaps: true
+        });
+        {% endif %}
+
         const chartData = { labels: {{ combined_labels | tojson }}, datasets: datasets };
         const chartOptions = {
             responsive: true,
@@ -353,7 +382,7 @@ HTML_CONTENT = """
         chartOptions.plugins.annotation.annotations.startLine1 = { type: 'line', yMin: {{ primary_user_data.start_weight }}, yMax: {{ primary_user_data.start_weight }}, yScaleID: 'y1', borderColor: '#33CFFF', borderWidth: 2, borderDash: [6, 6], label: { content: 'Start: {{ "%.2f"|format(primary_user_data.start_weight) }} lbs', display: {{ 'false' if comparison_user else 'true' }}, position: 'start', backgroundColor: 'rgba(51, 207, 255, 0.8)' }};
         {% endif %}
         {% if primary_user_data.goal_weight %}
-        chartOptions.plugins.annotation.annotations.goalLine1 = { type: 'line', yMin: {{ primary_user_data.goal_weight }}, yMax: {{ primary_user_data.goal_weight }}, yScaleID: 'y1', borderColor: 'var(--danger-color)', borderWidth: 2, borderDash: [6, 6], label: { content: 'Goal: {{ "%.2f"|format(primary_user_data.goal_weight) }} lbs', display: {{ 'false' if comparison_user else 'true' }}, position: 'end', backgroundColor: 'rgba(220, 53, 69, 0.8)' }};
+        chartOptions.plugins.annotation.annotations.goalLine1 = { type: 'line', yMin: {{ primary_user_data.goal_weight }}, yMax: {{ primary_user_data.goal_weight }}, yScaleID: 'y1', borderColor: '#dc3545', borderWidth: 2, borderDash: [6, 6], label: { content: 'Goal: {{ "%.2f"|format(primary_user_data.goal_weight) }} lbs', display: {{ 'false' if comparison_user else 'true' }}, position: 'end', backgroundColor: 'rgba(220, 53, 69, 0.8)' }};
         {% endif %}
 
         if (chart_config.y1_min !== null && chart_config.y1_max !== null) { chartOptions.scales.y1.min = chart_config.y1_min; chartOptions.scales.y1.max = chart_config.y1_max; }
@@ -467,7 +496,7 @@ HTML_CONTENT = """
                                 type: 'line',
                                 yMin: 100,
                                 yMax: 100,
-                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                borderColor: 'rgba(100, 100, 100, 0.5)',
                                 borderWidth: 2,
                                 borderDash: [6, 6],
                                 label: {
@@ -629,11 +658,16 @@ select { padding: 10px; background-color: white; }
     border-radius: 8px;
     cursor: pointer;
     font-size: 1rem;
+    font-family: inherit;
     font-weight: 500;
     transition: all 0.2s ease-in-out;
     text-decoration: none;
     display: inline-block;
     text-align: center;
+}
+.inline-form {
+    display: inline-block;
+    margin: 0;
 }
 .btn:hover { opacity: 0.9; }
 .btn-primary { background-color: var(--primary-color); color: white; }
@@ -801,6 +835,17 @@ setup_environment()
 app = Flask(__name__, static_folder=STATIC_FOLDER)
 app.secret_key = 'a_secure_random_secret_key'
 
+class WorkbookLocked(Exception):
+    """weights.xlsx could not be written, usually because it is open in Excel."""
+
+LOCKED_MESSAGE = "Could not save — weights.xlsx is open in another program (e.g., Excel). Close it and try again."
+
+def save_workbook(workbook):
+    try:
+        workbook.save(EXCEL_FILE)
+    except PermissionError:
+        raise WorkbookLocked
+
 def get_users():
     """Reads the list of users from the 'Users' sheet."""
     try:
@@ -859,22 +904,20 @@ def add_weight_entry(date_str, weight, user, body_fat, waist_size):
     workbook = openpyxl.load_workbook(EXCEL_FILE)
     sheet = workbook["Weight Data"]
     sheet.append([date_str, weight, user, body_fat, waist_size])
-    workbook.save(EXCEL_FILE)
+    save_workbook(workbook)
 
 def update_weight_entry(row_index, new_date, new_weight, new_body_fat, new_waist_size):
     """Updates an existing entry by its row index."""
-    try:
-        workbook = openpyxl.load_workbook(EXCEL_FILE)
-        sheet = workbook["Weight Data"]
-        if 1 < row_index <= sheet.max_row:
-            sheet.cell(row=row_index, column=1).value = new_date
-            sheet.cell(row=row_index, column=2).value = new_weight
-            sheet.cell(row=row_index, column=4).value = new_body_fat
-            sheet.cell(row=row_index, column=5).value = new_waist_size
-            workbook.save(EXCEL_FILE)
-            return True
-    except Exception: return False
-    return False
+    workbook = openpyxl.load_workbook(EXCEL_FILE)
+    sheet = workbook["Weight Data"]
+    if not (1 < row_index <= sheet.max_row):
+        return False
+    sheet.cell(row=row_index, column=1).value = new_date
+    sheet.cell(row=row_index, column=2).value = new_weight
+    sheet.cell(row=row_index, column=4).value = new_body_fat
+    sheet.cell(row=row_index, column=5).value = new_waist_size
+    save_workbook(workbook)
+    return True
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -891,6 +934,8 @@ def index():
                 flash('Weight must be a positive number.', 'error')
         except (ValueError, TypeError):
             flash('Invalid input. Please enter valid numbers.', 'error')
+        except WorkbookLocked:
+            flash(LOCKED_MESSAGE, 'error')
         return redirect(url_for('index', user1=user))
 
     all_users = get_users()
@@ -925,29 +970,38 @@ def index():
         chart_data_2_to_plot = [data2_map.get(date) for date in combined_labels]
         chart_config["y2_axis_label"] = f"{comparison_user} Weight (lbs)"
 
-        # --- Proportional Y-Axis Scaling Logic ---
+        # --- Aligned Y-Axis Scaling ---
+        # Map the primary axis onto the comparison axis with the linear
+        # transform that puts both users' start weights at the same height
+        # and both goal weights at the same height, then widen the shared
+        # window until the comparison user's data fits inside it too.
         p_start = primary_user_data.get('start_weight')
         p_goal = primary_user_data.get('goal_weight')
         c_start = comparison_user_data.get('start_weight')
         c_goal = comparison_user_data.get('goal_weight')
 
-        # Check if all required values are present and valid for proportional scaling
-        if (y1_max is not None and y1_min is not None and
-            p_start and p_start > 0 and p_goal and p_goal > 0 and
-            c_start and c_goal):
-            
-            # Proportional scaling based on start and goal weights
-            chart_config['y2_max'] = y1_max * (c_start / p_start)
-            chart_config['y2_min'] = y1_min * (c_goal / p_goal)
-        else:
-            # Fallback to default auto-scaling if goal/start weights are missing
-            y2_values = [v for v in chart_data_2_to_plot if v is not None]
-            if c_start is not None: y2_values.append(c_start)
-            if c_goal is not None: y2_values.append(c_goal)
-            
-            if y2_values:
-                padding = 5
-                chart_config['y2_min'], chart_config['y2_max'] = min(y2_values) - padding, max(y2_values) + padding
+        y2_values = [v for v in chart_data_2_to_plot if v is not None]
+        if c_start is not None: y2_values.append(c_start)
+        if c_goal is not None: y2_values.append(c_goal)
+
+        # Alignment only works when both users have start/goal weights and
+        # both are trending the same direction (scale > 0).
+        scale = None
+        if (y1_max is not None and p_start and p_goal and c_start and c_goal
+                and p_start != p_goal):
+            scale = (c_start - c_goal) / (p_start - p_goal)
+
+        if scale is not None and scale > 0 and y2_values:
+            def to_y2(v): return c_goal + (v - p_goal) * scale
+            def to_y1(v): return p_goal + (v - c_goal) / scale
+            padding = 5
+            y1_min = min(y1_min, to_y1(min(y2_values) - padding))
+            y1_max = max(y1_max, to_y1(max(y2_values) + padding))
+            chart_config['y1_min'], chart_config['y1_max'] = y1_min, y1_max
+            chart_config['y2_min'], chart_config['y2_max'] = to_y2(y1_min), to_y2(y1_max)
+        elif y2_values:
+            padding = 5
+            chart_config['y2_min'], chart_config['y2_max'] = min(y2_values) - padding, max(y2_values) + padding
     else:
         combined_labels, chart_data_1 = [e['date'] for e in entries1], [e['weight'] for e in entries1]
 
@@ -963,6 +1017,28 @@ def index():
         if to_goal > 0.05: summary_data.update({'to_goal': f"{to_goal:.2f} lbs to lose", 'goal_class': 'goal-negative'})
         elif to_goal < -0.05: summary_data.update({'to_goal': f"{-to_goal:.2f} lbs below goal", 'goal_class': 'goal-positive'})
         else: summary_data.update({'to_goal': "Goal reached!", 'goal_class': 'goal-positive'})
+
+    # --- Trend Indicators ---
+    # entries is sorted newest-first, entries1 oldest-first.
+    if len(entries) >= 2:
+        change = entries[0]['weight'] - entries[1]['weight']
+        summary_data['change_text'] = f"{change:+.2f} lbs"
+        summary_data['change_class'] = ''
+        goal = summary_data.get('goal')
+        if goal is not None and abs(change) > 0.005:
+            toward_goal = abs(entries[0]['weight'] - goal) < abs(entries[1]['weight'] - goal)
+            summary_data['change_class'] = 'goal-positive' if toward_goal else 'goal-negative'
+        recent = entries[:4]
+        summary_data['avg_recent_n'] = len(recent)
+        summary_data['avg_recent_text'] = f"{sum(e['weight'] for e in recent) / len(recent):.2f} lbs"
+
+    moving_avg_data = []
+    if len(entries1) >= 2:
+        ma_map = {}
+        for i in range(len(entries1)):
+            window = entries1[max(0, i - 3): i + 1]
+            ma_map[entries1[i]['date']] = round(sum(e['weight'] for e in window) / len(window), 2)
+        moving_avg_data = [ma_map.get(d) for d in combined_labels]
 
     # --- Optional Charts & Summary Stats ---
     body_fat_entries = [e for e in entries if e.get('body_fat') is not None]
@@ -1036,6 +1112,7 @@ def index():
         chart_config=chart_config, today_date=today_date, summary_data=summary_data,
         body_fat_labels=body_fat_labels, body_fat_data=body_fat_data,
         waist_size_labels=waist_size_labels, waist_size_data=waist_size_data,
+        moving_avg_data=moving_avg_data,
         selected_compare_users=selected_compare_users, normalized_chart_data=normalized_chart_data
     )
 
@@ -1057,11 +1134,12 @@ def update_goals():
                 user_found = True
                 break
         if user_found:
-            workbook.save(EXCEL_FILE)
+            save_workbook(workbook)
             flash(f"Goals for {user} updated successfully!", "success")
         else:
             flash(f"Could not find user {user} to update.", "error")
     except ValueError: flash("Invalid input for weights.", "error")
+    except WorkbookLocked: flash(LOCKED_MESSAGE, "error")
     except Exception as e: flash(f"An error occurred: {e}", "error")
     return redirect(url_for('index', user1=user))
 
@@ -1077,7 +1155,11 @@ def add_user():
     workbook = openpyxl.load_workbook(EXCEL_FILE)
     sheet = workbook["Users"]
     sheet.append([new_user_name, None, None])
-    workbook.save(EXCEL_FILE)
+    try:
+        save_workbook(workbook)
+    except WorkbookLocked:
+        flash(LOCKED_MESSAGE, "error")
+        return redirect(url_for('index'))
     flash(f"User '{new_user_name}' added successfully!", "success")
     return redirect(url_for('index', user1=new_user_name))
 
@@ -1097,19 +1179,23 @@ def update_entry(row_index):
             flash('Invalid weight or date.', 'error')
     except (ValueError, TypeError):
         flash('Invalid input for weight.', 'error')
+    except WorkbookLocked:
+        flash(LOCKED_MESSAGE, 'error')
     return redirect(request.referrer or url_for('index'))
 
-@app.route('/delete/<int:row_index>')
+@app.route('/delete/<int:row_index>', methods=['POST'])
 def delete_entry(row_index):
     try:
         workbook = openpyxl.load_workbook(EXCEL_FILE)
         sheet = workbook["Weight Data"]
         if 1 < row_index <= sheet.max_row:
             sheet.delete_rows(row_index)
-            workbook.save(EXCEL_FILE)
+            save_workbook(workbook)
             flash('Entry deleted successfully!', 'success')
         else:
             flash('Could not find the entry to delete.', 'error')
+    except WorkbookLocked:
+        flash(LOCKED_MESSAGE, 'error')
     except Exception as e:
         flash(f'An error occurred: {e}', 'error')
     return redirect(request.referrer or url_for('index'))
@@ -1128,8 +1214,11 @@ def delete_user():
             rows_to_delete = [r.row for r in sheet.iter_rows(min_row=2) if r[col_idx - 1].value == user_to_delete]
             for r_idx in sorted(rows_to_delete, reverse=True):
                 sheet.delete_rows(r_idx)
-        workbook.save(EXCEL_FILE)
+        save_workbook(workbook)
         flash(f"User '{user_to_delete}' and all data have been deleted.", "success")
+    except WorkbookLocked:
+        flash(LOCKED_MESSAGE, "error")
+        return redirect(url_for('index', user1=user_to_delete))
     except Exception as e:
         flash(f"An error occurred: {e}", "error")
         return redirect(url_for('index', user1=user_to_delete))
