@@ -240,3 +240,73 @@ tbody tr:last-child td { border-bottom: none; }
 .normalized-chart-card {
     margin-top: 20px;
 }
+.date-filter-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+.date-filter-grid .form-group {
+    margin-bottom: 15px;
+}
+.date-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+.date-presets .btn {
+    flex: 1 1 auto;
+    min-width: 52px;
+}
+.btn-block {
+    width: 100%;
+}
+.filter-note {
+    margin-bottom: 0;
+    margin-top: 12px;
+    text-align: center;
+}
+.filter-badge {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.chart-header-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.view-option {
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #555;
+    background-color: var(--background-color);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.2s ease-in-out;
+}
+.view-option + .view-option {
+    border-left: 1px solid var(--border-color);
+}
+.view-option:hover {
+    background-color: #e8eeed;
+}
+.view-option.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+.view-option.active:hover {
+    background-color: var(--primary-color);
+}
